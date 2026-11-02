@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rbln-sink-attention"
+version = "0.1.0"
+description = "Sink-aware Triton attention kernels for Rebellions ATOM (research code, SDK 0.10.2)"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [{name = "Sungwon Woo"}]
+requires-python = ">=3.10"
+dependencies = ["torch>=2.9,<2.11"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+rbln_sinks = ["vendor/*.py"]

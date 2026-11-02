@@ -1,0 +1,139 @@
+--- a/vllm_rbln/triton_kernels/flash_causal_attention.py (vllm-rbln 0.10.2.post2)
++++ b/src/rbln_sinks/vendor/full_once.py
+@@ -49,18 +49,27 @@
+     for batch_id in tl.static_range(0, NUM_BATCH, 1):
+         query_ptr = tl.make_block_ptr(
+             base=query_base,
+-            shape=(NUM_BATCH, NUM_HEAD, NUM_GROUP, QUERY_LEN, HEAD_DIM),
+-            strides=(
+-                NUM_HEAD * NUM_GROUP * QUERY_LEN * HEAD_DIM,
+-                NUM_GROUP * QUERY_LEN * HEAD_DIM,
+-                QUERY_LEN * HEAD_DIM,
+-                HEAD_DIM,
++            shape=(NUM_BATCH, NUM_HEAD, NUM_GROUP, QUERY_LEN, (HEAD_DIM * 2)),
++            strides=(
++                NUM_HEAD * NUM_GROUP * QUERY_LEN * (HEAD_DIM * 2),
++                NUM_GROUP * QUERY_LEN * (HEAD_DIM * 2),
++                QUERY_LEN * (HEAD_DIM * 2),
++                (HEAD_DIM * 2),
+                 1,
+             ),
+             offsets=(batch_id, 0, 0, 0, 0),
+             block_shape=(1, NUM_HEAD, NUM_GROUP, QUERY_LEN, HEAD_DIM),
+             order=(4, 3, 2, 1, 0),
+         )
++        sink_ptr = tl.make_block_ptr(
++            base=query_base,
++            shape=(NUM_BATCH, NUM_HEAD, NUM_GROUP, QUERY_LEN, HEAD_DIM * 2),
++            strides=(NUM_HEAD * NUM_GROUP * QUERY_LEN * HEAD_DIM * 2, NUM_GROUP * QUERY_LEN * HEAD_DIM * 2, QUERY_LEN * HEAD_DIM * 2, HEAD_DIM * 2, 1),
++            offsets=(batch_id, 0, 0, 0, HEAD_DIM),
++            block_shape=(1, NUM_HEAD, NUM_GROUP, 1, HEAD_DIM),
++            order=(4, 3, 2, 1, 0),
++        )
++        sinks_value = tl.load(sink_ptr)
+         output_ptr = tl.make_block_ptr(
+             base=output_base,
+             shape=(NUM_BATCH, NUM_HEAD, NUM_GROUP, QUERY_LEN, HEAD_DIM),
+@@ -207,7 +216,7 @@
+                     )
+                 else:
+                     row_max_global, row_exp_normalize, row_sum_cur = (
+-                        rblib.dynamic_flash_attn_tile(qk_scaled, block_offset)
++                        rblib.dynamic_flash_attn_tile(qk_scaled, block_offset, sink=sinks_value)
+                     )
+ 
+                 v_cache_base_ptr = tl.make_block_ptr(
+@@ -291,18 +300,27 @@
+     for batch_id in tl.static_range(0, NUM_BATCH, 1):
+         query_ptr = tl.make_block_ptr(
+             base=query_base,
+-            shape=(NUM_BATCH, NUM_HEAD, NUM_GROUP, QUERY_LEN, HEAD_DIM),
+-            strides=(
+-                NUM_HEAD * NUM_GROUP * QUERY_LEN * HEAD_DIM,
+-                NUM_GROUP * QUERY_LEN * HEAD_DIM,
+-                QUERY_LEN * HEAD_DIM,
+-                HEAD_DIM,
++            shape=(NUM_BATCH, NUM_HEAD, NUM_GROUP, QUERY_LEN, (HEAD_DIM * 2)),
++            strides=(
++                NUM_HEAD * NUM_GROUP * QUERY_LEN * (HEAD_DIM * 2),
++                NUM_GROUP * QUERY_LEN * (HEAD_DIM * 2),
++                QUERY_LEN * (HEAD_DIM * 2),
++                (HEAD_DIM * 2),
+                 1,
+             ),
+             offsets=(batch_id, 0, 0, 0, 0),
+             block_shape=(1, NUM_HEAD, NUM_GROUP, QUERY_LEN, HEAD_DIM),
+             order=(4, 3, 2, 1, 0),
+         )
++        sink_ptr = tl.make_block_ptr(
++            base=query_base,
++            shape=(NUM_BATCH, NUM_HEAD, NUM_GROUP, QUERY_LEN, HEAD_DIM * 2),
++            strides=(NUM_HEAD * NUM_GROUP * QUERY_LEN * HEAD_DIM * 2, NUM_GROUP * QUERY_LEN * HEAD_DIM * 2, QUERY_LEN * HEAD_DIM * 2, HEAD_DIM * 2, 1),
++            offsets=(batch_id, 0, 0, 0, HEAD_DIM),
++            block_shape=(1, NUM_HEAD, NUM_GROUP, 1, HEAD_DIM),
++            order=(4, 3, 2, 1, 0),
++        )
++        sinks_value = tl.load(sink_ptr)
+         output_ptr = tl.make_block_ptr(
+             base=output_base,
+             shape=(NUM_BATCH, NUM_HEAD, NUM_GROUP, QUERY_LEN, HEAD_DIM),
+@@ -448,7 +466,7 @@
+                     )
+                 else:
+                     row_max_global, row_exp_normalize, row_sum_cur = (
+-                        rblib.dynamic_flash_attn_tile(qk_scaled, block_offset)
++                        rblib.dynamic_flash_attn_tile(qk_scaled, block_offset, sink=sinks_value)
+                     )
+ 
+                 v_cache_base_ptr = tl.make_block_ptr(
+@@ -532,7 +550,7 @@
+     kv_cache = kv_cache.to(torch.float32)
+     qk_scale = qk_scale.to(torch.float32)
+ 
+-    output = torch.empty_like(query)
++    output = torch.empty((*query.shape[:-1], key.shape[-1]), dtype=query.dtype, device=query.device)
+ 
+     query = rblib.align_tensor_last_dim_to_64(query)
+     key = rblib.align_tensor_last_dim_to_64(key)
+@@ -540,7 +558,7 @@
+ 
+     NUM_HEAD = query.shape[1]
+     NUM_GROUP = query.shape[2]
+-    HEAD_DIM = query.shape[-1]
++    HEAD_DIM = key.shape[-1]
+     QUERY_LEN = query.shape[-2]
+     PARTITION_SIZE = kv_cache.shape[-2]
+     MAX_SEQ_LEN = PARTITION_SIZE * seq_idx.shape[1]
+@@ -585,7 +603,7 @@
+     block_table: torch.Tensor,
+     dummy0: torch.Tensor,
+ ) -> torch.Tensor:
+-    return torch.empty_like(query)
++    return torch.empty((*query.shape[:-1], key.shape[-1]), dtype=query.dtype, device=query.device)
+ 
+ 
+ @triton_op("rbln_triton_ops::flash_causal_attention_naive_decode", mutates_args=())
+@@ -607,7 +625,7 @@
+     kv_cache = kv_cache.to(torch.float32)
+     qk_scale = qk_scale.to(torch.float32)
+ 
+-    output = torch.empty_like(query)
++    output = torch.empty((*query.shape[:-1], key.shape[-1]), dtype=query.dtype, device=query.device)
+ 
+     query = rblib.align_tensor_last_dim_to_64(query)
+     key = rblib.align_tensor_last_dim_to_64(key)
+@@ -615,7 +633,7 @@
+ 
+     NUM_HEAD = query.shape[1]
+     NUM_GROUP = query.shape[2]
+-    HEAD_DIM = query.shape[-1]
++    HEAD_DIM = key.shape[-1]
+     QUERY_LEN = query.shape[-2]
+     PARTITION_SIZE = kv_cache.shape[-2]
+     MAX_SEQ_LEN = PARTITION_SIZE * seq_idx.shape[1]
+@@ -660,4 +678,4 @@
+     block_table: torch.Tensor,
+     dummy0: torch.Tensor,
+ ) -> torch.Tensor:
+-    return torch.empty_like(query)
++    return torch.empty((*query.shape[:-1], key.shape[-1]), dtype=query.dtype, device=query.device)

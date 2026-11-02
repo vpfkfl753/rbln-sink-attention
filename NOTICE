@@ -1,0 +1,17 @@
+rbln-sink-attention
+
+src/rbln_sinks/vendor/swa_carrier_sink.py and
+src/rbln_sinks/vendor/full_once.py are modified from the Triton attention
+kernels in vllm-rbln 0.10.2.post2:
+
+  Copyright 2025 Rebellions Inc.
+  Licensed under the Apache License, Version 2.0.
+
+Original copyright and license headers are retained in both files; diffs are in
+docs/patches/.
+
+Other files: Copyright 2026 Sungwon Woo, Apache License, Version 2.0.
+
+fixtures/ holds layer-0 activations and the 64 sink values from GPT-OSS-20B
+(Apache-2.0). No model checkpoints, SDK packages, or compiled binaries are
+included.
