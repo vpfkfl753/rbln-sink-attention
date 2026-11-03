@@ -60,6 +60,10 @@ Shapes, KV cache layout, and host checks: [docs/API.md](docs/API.md).
 - `docs/patches/`: diffs against `vllm-rbln` 0.10.2.post2
 - `fixtures/`: captured GPT-OSS-20B layer-0 inputs and two recorded device outputs used by tests
 
+## Acknowledgments
+
+This research was supported by the Ministry of Science and ICT (MSIT) through the 2026 High-Performance Computing (HPC) Support Program (RQT-26-041563).
+
 ## License
 
 Apache-2.0. Original kernels © Rebellions Inc.; see [NOTICE](NOTICE).
